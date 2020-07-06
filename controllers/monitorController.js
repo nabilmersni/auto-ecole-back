@@ -1,0 +1,186 @@
+const express = require('express');
+const mongoose = require('../db/connect');
+const User = require('../models/user');
+const bcrypt = require('bcryptjs');
+const isAdmin = require('../middleWares/middleWare');
+const jwt = require('jsonwebtoken');
+const app = express();
+
+//Get
+app.get('/all',isAdmin, (req,res) =>{
+
+    User.find({role: "monitor"})
+    .then((users) => {
+        res.status(200).send(users);
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+})
+
+app.get('/active',isAdmin, (req,res) =>{
+
+    User.find({role: "monitor", etat: true})
+    .then((users) => {
+        res.status(200).send(users);
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+})
+
+app.get('/one/:idUser',isAdmin, (req,res) =>{
+
+    let id = req.params.idUser;
+
+    User.findOne({role: "monitor", _id:id})
+    .then((user) => {
+        if(!user){
+            res.status(400).send({message: "user not found !"})
+        }else{
+            res.status(200).send(user);
+        }
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+})
+
+
+//Post 
+app.post('/register', (req, res) => {
+    //1 - nekhou les données
+    let data = req.body;
+
+    let salt = bcrypt.genSaltSync(10);
+    let hashedpassword = bcrypt.hashSync(data._password, salt);
+
+    //2 - creation d'un object <= data
+    let user = new User({
+        firstname: data._firstname,
+        lastname: data._lastname,
+        email: data._email,
+        phone: data._phone,
+        password: hashedpassword,
+        role: "monitor",
+        etat: false
+    });
+    console.log(user);
+    user.save()
+        .then(() => {
+            res.status(200).send({ message: "User registred succefully !" });
+        })
+        .catch((e) => {
+            res.status(400).send(e);
+        });
+});
+
+app.post('/login', (req,res) =>{
+
+    let email = req.body._email;
+    let password = req.body._password;
+
+    User.findOne({email: email })
+    .then( (user)=>{
+        if(!user){
+            res.status(400).send({ message: "email incorrect!" });
+        }else{
+            let compare = bcrypt.compareSync(password, user.password);
+
+            if(!compare){
+                res.status(404).send({message: "password incorrect!" });
+            }else{
+                //json web token 
+                let objet = {
+                    id: user._id,
+                    role: user.role
+                }
+
+                let mytoken = jwt.sign(objet, "myKey");
+                res.status(200).send({token: mytoken });
+            }
+        }
+    } )
+
+    .catch((e) => {
+        res.status(400).send(e);
+    });
+
+})
+
+//delete
+
+app.delete('/delete/:idUser',isAdmin, (req,res) =>{
+
+    let id = req.params.idUser;
+
+    User.findOneAndRemove({role: "monitor", _id:id})
+    .then((user) => {
+        if(!user){
+            res.status(400).send({message: "monitor not found !"})
+        }else{
+            res.status(200).send(user);
+        }
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+})
+
+//patch
+//update state
+app.patch('/update-state/:idUser',isAdmin, (req,res) =>{
+
+    let id = req.params.idUser;
+
+    User.findOne({role: "monitor", _id:id})
+    .then((user) => {
+        if(!user){
+            res.status(400).send({message: "monitor not found !"})
+        }else{
+            user.etat = !user.etat;
+            user.save();
+            res.status(200).send({message: "State updated !"});
+        }
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+})
+
+//update all info
+
+app.patch('/update/:idUser', (req, res) => {
+
+    let id = req.params.idUser;
+    let data = req.body;
+
+    //2 - creation d'un object <= data
+    let userUpdated = new User({
+        firstname: data._firstname,
+        lastname: data._lastname,
+        email: data._email,
+        phone: data._phone,
+        role: "monitor",
+        etat: false
+    });
+
+    User.findOne({role: "monitor", _id:id})
+    .then((user) => {
+        if(!user){
+            res.status(400).send({message: "user not found !"})
+        }else{
+            user.firstname = userUpdated.firstname;
+            user.lastname = userUpdated.lastname;
+            user.email = userUpdated.email;
+            user.phone = userUpdated.phone;
+            user.save();
+            res.status(200).send({message: "monitor Info updated !"});
+        }
+    })
+    .catch(()=>{
+        res.status(400).send({message: "error !"})
+    })
+});
+
+module.exports = app;
